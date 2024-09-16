@@ -1,0 +1,48 @@
+Day #9 Various Job Roles: Data Engineer Vs Data Analyst Vs Data Scientist Vs ML Engineer.
+
+Today I explained what are the various job roles available in Data Scientist and Machine Learning.
+
+
+
+Before explain I will recommended you to visit https://wellfound.com/ there are various job roles that are posted by Start-Up IT companies. You can get some ideas what are kill set required for following Job roles.
+
+
+
+Various Data Based Job Roles:
+
+    (1) Data Analyst (2) Data Engineer (3) Data Scientist (4) ML Engineer
+
+
+
+1.Data Engineer: Data engineers work in various settings to build systems that collect, manage, and convert raw data into usable information for data scientists and business analysts to interpret. Their ultimate goal is to make data accessible so that organizations can use it to evaluate and optimize their performance. Refer below link to understand responsibility of Data Engineer.
+
+https://wellfound.com/jobs/3079048-data-engineer
+
+https://wellfound.com/jobs/3086126-data-engineer
+
+2. Data Analyst: Responsibilities of Data Analyst is cleaning and organizing Raw Data, Analyzing data to derive insights, creating data visualizations, producing and maintaining reports, collaborating with teams/colleagues based on insight gained and optimizing data collection procedures. 
+
+https://wellfound.com/jobs/3091165-data-analyst
+
+https://wellfound.com/jobs/3092037-data-analyst
+
+https://wellfound.com/jobs/3078597-data-analyst
+
+
+
+3.Data Scientist: A data scientist is someone who is better at statistics than any software engineer and better at software engineering than any statistician. Who know all end to end process of model building. He analyze business problem and provide right solution and model to fit business. It is most demanded role in IT sectors.
+
+4. ML Engineer: ML engineer responsibilities are deployment machine leaning models to production ready environment, scaling and optimizing the model for production and monitoring and maintenance of deployed models.
+
+https://wellfound.com/jobs/3087949-ai-ml-engineer
+
+
+
+Please check following you-tube link that explain various job roles and comparison.
+
+
+
+
+
+
+
