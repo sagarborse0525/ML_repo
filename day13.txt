@@ -1,0 +1,31 @@
+Framing the problem: Before developing a model, we first analyze business problems and requirements, what is exactly a problem, who is the customer, which ML model to choose, and how much cost will be required for model development. What is the team size for developing a model?, all are come under framing problem.
+
+Objectives:
+Identify if ML is a good solution for a problem.
+Learn how to frame an ML problem.
+Understand how to pick the right model and define success metrics.
+
+Why is problem framing important?
+Problem framing ensures that an ML approach is a good solution to the problem before beginning to work with data and train a model.
+
+Understand the problem:
+To understand the problem, we perform below tasks:
+1.State the goal for the product you are developing or refactoring.
+2.Determine whether the goal is best solved using predictive ML, generative AI, or a non-ML solution.
+3.Verify you have the data required to train a model if you're using a predictive ML approach.
+
+Framing an ML problem:
+After verifying that your problem is best solved using either a predictive ML or a generative AI approach, you're ready to frame your problem in ML terms. You frame a problem in ML terms by completing the following tasks:
+
+Define the ideal outcome and the model's goal.
+Identify the model's output.
+Define success metrics.
+
+Implementing a model:
+When implementing a model, start simple. Simple models provide a good baseline, even if you don't end up launching them. In fact, using a simple model is probably better than you think. Starting simple helps you determine whether or not a complex model is even justified.
+
+Train our own model versus using an already trained model:
+Trained models exist for a variety of use cases and offer many advantages. However, trained models only work when the label and features match with our dataset. For example, if a trained model uses 25 features and our dataset only includes 24 of them, the trained model will most likely make bad predictions.
+
+Monitoring:During problem framing, consider the monitoring and alerting infrastructure our ML solution needs.
+Model deployment:In some cases, a newly trained model might be worse than the model currently in production. If it is, we'll want to prevent it from being released into production and get an alert that our automated deployment has failed.
