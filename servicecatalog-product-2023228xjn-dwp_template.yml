@@ -1,0 +1,670 @@
+Description: Takenaka SageMaker template which provides the resources needed to represent infrastructure as code.
+  This template specifically creates a CI/CD pipeline to build a model using a SageMaker Pipeline and deploy the
+  resulting trained ML Model from Model Registry to 4 stages in CD -- Dev, QA, UAT and and PROD envs.
+
+Parameters:
+
+  SageMakerProjectName:
+    Type: String
+    Description: Name of the project
+    MinLength: 1
+    AllowedPattern: ^[a-zA-Z](-*[a-zA-Z0-9])*
+
+  SageMakerProjectId:
+    Type: String
+    Description: Service generated Id of the project.
+
+  SageMakerExecutionRoleProdName:
+    Type: String
+    Description: Name of the role created in the Prod account used by SageMaker to deploy the model
+    MinLength: 1
+    AllowedPattern: ^[a-zA-Z](-*[a-zA-Z0-9])*
+
+  SageMakerExecutionRoleNonProdName:
+    Type: String
+    Description: Name of the role created in the Prod account used by SageMaker to deploy the model
+    MinLength: 1
+    AllowedPattern: ^[a-zA-Z](-*[a-zA-Z0-9])*
+
+  AccountIdProd:
+    Type: String
+    Description: Id of the organizational unit that holds the prod account
+
+  AccountIdNonProd:
+    Type: String
+    Description: Id of the organizational unit that holds the non-prod account
+  
+  EmailNotifyLambda:
+    Type: String
+    Description: Name of lambda function to be invoked to send email 
+  ModelType:
+    Type: String
+    Description: Can have values model1 / model3
+    
+  
+
+    
+Resources:
+
+  MlOpsArtifactsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName} # 58 chars max/ 64 allowed
+      Tags:
+        - Key: CreatedBy
+          Value: sagemaker
+        - Key: CTC_Bill01_Owner
+          Value: ana
+        - Key: CTC_Bill02_System
+          Value: ani
+        - Key: CTC_Bill03_Type
+          Value: snb
+        - Key: CTC_Bill04_Name
+          Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}
+        - Key: AID
+          Value: ana
+        - Key: SID
+          Value: ani
+        - Key: Env
+          Value: snb
+        - Key: Name
+          Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}
+
+
+  ##### Section 1: Model build and train resources
+  ModelBuildCodeCommitRepository:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      # Max allowed length: 100 chars
+      RepositoryName: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modelbuild # max: 10+33+15+10=68
+      RepositoryDescription: !Sub SageMaker Model building workflow infrastructure as code for the Project ${SageMakerProjectName}
+      Code:
+        S3:
+          Bucket: ana-snb-ani-af-storage
+          Key: Sagemaker Project Infrastructure Files/sagemaker-project-files-modelbuild-dwp.zip
+        BranchName: main
+
+
+  SageMakerModelPipelineBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      # Max length: 255 chars
+      Name: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modelbuild # max: 10+33+15+10=68
+      Description: Builds the model building workflow code repository, creates the SageMaker Pipeline and executes it
+      ServiceRole: !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'iam:', !Ref 'AWS::AccountId', 'role/service-role/AmazonSageMakerServiceCatalogProductsUseRole'] ]
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        EnvironmentVariables:
+         - Name: SAGEMAKER_PROJECT_NAME
+           Value: !Ref SageMakerProjectName
+         - Name: SAGEMAKER_PROJECT_ID
+           Value: !Ref SageMakerProjectId
+         - Name: ARTIFACT_BUCKET
+           Value: !Ref MlOpsArtifactsBucket
+         - Name: SAGEMAKER_PIPELINE_NAME
+           Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}
+         - Name: SAGEMAKER_PIPELINE_ROLE_ARN
+           Value: !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'iam:', !Ref 'AWS::AccountId', 'role/service-role/AmazonSageMakerServiceCatalogProductsUseRole'] ]
+         - Name: AWS_REGION
+           Value: !Ref AWS::Region
+         - Name: SAGEMAKER_PROJECT_ARN
+           Value: !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'sagemaker', !Ref 'AWS::Region', !Ref 'AWS::AccountId', !Sub 'project/${SageMakerProjectName}']]
+         - Name: PIPELINE_NAME
+           Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modelbuild
+         - Name: MODEL_TYPE
+           Value: !Ref ModelType
+
+      Tags:
+        - Key: CreatedBy
+          Value: sagemaker
+        - Key: CTC_Bill01_Owner
+          Value: ana
+        - Key: CTC_Bill02_System
+          Value: ani
+        - Key: CTC_Bill03_Type
+          Value: snb
+        - Key: CTC_Bill04_Name
+          Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modelbuild
+        - Key: AID
+          Value: ana
+        - Key: SID
+          Value: ani
+        - Key: Env
+          Value: snb
+        - Key: Name
+          Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modelbuild
+        
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: codebuild-buildspec.yml
+      TimeoutInMinutes: 480
+
+  ModelBuildPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: MlOpsArtifactsBucket
+    Properties:
+      # Max length: 100 chars
+      Name: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modelbuild # max: 10+33+15+10=68
+      RoleArn:  !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'iam:', !Ref 'AWS::AccountId', 'role/service-role/AmazonSageMakerServiceCatalogProductsUseRole'] ]
+      ArtifactStore:
+        Type: S3
+        Location:
+          !Ref MlOpsArtifactsBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: ModelBuildWorkflowCode
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              Configuration:
+                # need to explicitly set this to false per https://docs.aws.amazon.com/codepipeline/latest/userguide/update-change-detection.html
+                PollForSourceChanges: false
+                RepositoryName: !GetAtt ModelBuildCodeCommitRepository.Name
+                BranchName: main
+              OutputArtifacts:
+                - Name: ModelBuildSourceArtifact
+        - Name: Build
+          Actions:
+            - Name: BuildAndExecuteSageMakerPipeline
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              InputArtifacts:
+                - Name: ModelBuildSourceArtifact
+              OutputArtifacts:
+                - Name: ModelBuildBuildArtifact
+              Configuration:
+                ProjectName: !Ref SageMakerModelPipelineBuildProject
+                EnvironmentVariables: '[{"name":"PipelineExecutionId","value":"#{codepipeline.PipelineExecutionId}","type":"PLAINTEXT"}]'
+              RunOrder: 1
+
+  ##### Section 2: Model deployment resources
+  ModelDeploySageMakerEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      # Max length allowed: 64
+      Name: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-model # max: 10+33+15+5=63 chars
+      Description: "Rule to trigger a deployment when SageMaker Model registry is updated with a new model package. For example, a new model package is registered with Registry"
+      EventPattern:
+        source:
+          - "aws.sagemaker"
+        detail-type:
+          - "SageMaker Model Package State Change"
+        detail:
+          ModelPackageGroupName:
+            - !Sub ${SageMakerProjectName}-${SageMakerProjectId}
+      State: "ENABLED"
+      Targets:
+        -
+          Arn:
+            !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'codepipeline', !Ref 'AWS::Region', !Ref 'AWS::AccountId', !Ref ModelDeployPipeline ] ]
+          RoleArn:
+            !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'iam:', !Ref 'AWS::AccountId', 'role/service-role/AmazonSageMakerServiceCatalogProductsUseRole'] ]
+          Id: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-trigger
+
+
+
+  ModelDeployCodeCommitEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      # Max length allowed: 64
+      Name: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-code # max: 10+33+15+4=62 chars
+      Description: "Rule to trigger a deployment when CodeCommit is updated with a commit"
+      EventPattern:
+        source:
+          - "aws.codecommit"
+        detail-type:
+          - "CodeCommit Repository State Change"
+        resources:
+          - !GetAtt ModelDeployCodeCommitRepository.Arn
+        detail:
+          referenceType:
+            - "branch"
+          referenceName:
+            - "main"
+      State: "ENABLED"
+      Targets:
+        -
+          Arn:
+            !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'codepipeline', !Ref 'AWS::Region', !Ref 'AWS::AccountId', !Ref ModelDeployPipeline ] ]
+          RoleArn:
+            !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'iam:', !Ref 'AWS::AccountId', 'role/service-role/AmazonSageMakerServiceCatalogProductsUseRole'] ]
+          Id: !Sub codecommit-${SageMakerProjectName}-trigger
+
+
+
+  ModelDeployCodeCommitRepository:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      # Max allowed length: 100 chars
+      RepositoryName: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modeldeploy # max: 10+33+15+11=69
+      RepositoryDescription: !Sub SageMaker Endpoint deployment infrastructure as code for the Project ${SageMakerProjectName}
+      Code:
+        S3:
+          Bucket: ana-snb-ani-af-storage
+          Key: Sagemaker Project Infrastructure Files/sagemaker-project-files-modeldeploy-dwp.zip
+        BranchName: main
+
+
+  ModelDeployBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      # Max length: 255 chars
+      Name: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modeldeploy # max: 10+33+15+11=69
+      Description: Builds the Cfn template which defines the Endpoint with specified configuration
+      ServiceRole:
+        !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'iam:', !Ref 'AWS::AccountId', 'role/service-role/AmazonSageMakerServiceCatalogProductsUseRole'] ]
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        EnvironmentVariables:
+         - Name: SAGEMAKER_PROJECT_NAME
+           Value: !Ref SageMakerProjectName
+         - Name: SAGEMAKER_PROJECT_ID
+           Value: !Ref SageMakerProjectId
+         - Name: ARTIFACT_BUCKET
+           Value: !Ref MlOpsArtifactsBucket
+         - Name: SOURCE_MODEL_PACKAGE_GROUP_NAME
+           Value: !Sub ${SageMakerProjectName}-${SageMakerProjectId}
+         - Name: AWS_REGION
+           Value: !Ref AWS::Region       
+         - Name: EXPORT_TEMPLATE_NAME
+           Value: template-export.yml
+         - Name: EXPORT_TEMPLATE_DEV_CONFIG
+           Value: dev-config-export.json
+         - Name: EXPORT_TEMPLATE_QA_CONFIG
+           Value: qa-config-export.json
+         - Name: EXPORT_TEMPLATE_UAT_CONFIG
+           Value: uat-config-export.json
+         - Name: EXPORT_TEMPLATE_PROD_CONFIG
+           Value: prod-config-export.json
+         - Name: ACCOUNT_ID_NON_PROD
+           Value: !Ref AccountIdNonProd
+         - Name: ACCOUNT_ID_PROD
+           Value: !Ref AccountIdProd
+         - Name: SAGEMAKER_EXECUTION_ROLE_NONPROD_NAME
+           Value: !Ref SageMakerExecutionRoleNonProdName
+         - Name: SAGEMAKER_EXECUTION_ROLE_PROD_NAME
+           Value: !Ref SageMakerExecutionRoleProdName
+         - Name: PIPELINE_NAME
+           Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modeldeploy  
+         - Name: MODEL_TYPE
+           Value: !Ref ModelType
+      Tags:
+        - Key: CreatedBy
+          Value: sagemaker
+        - Key: CTC_Bill01_Owner
+          Value: ana
+        - Key: CTC_Bill02_System
+          Value: ani
+        - Key: CTC_Bill03_Type
+          Value: snb
+        - Key: CTC_Bill04_Name
+          Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modeldeploy
+        - Key: AID
+          Value: ana
+        - Key: SID
+          Value: ani
+        - Key: Env
+          Value: snb
+        - Key: Name
+          Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modeldeploy   
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml
+      TimeoutInMinutes: 30
+
+  PostDeployProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      # Max length: 255 chars
+      Name: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-postdeploy # max: 10+33+15+7=65
+      Description: Perform post deployment of model
+      ServiceRole:
+        !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'iam:', !Ref 'AWS::AccountId', 'role/service-role/AmazonSageMakerServiceCatalogProductsUseRole'] ]
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: "aws/codebuild/amazonlinux2-x86_64-standard:4.0"
+        EnvironmentVariables:
+          - Name: SAGEMAKER_PROJECT_NAME
+            Value: !Ref SageMakerProjectName
+          - Name: SAGEMAKER_PROJECT_ID
+            Value: !Ref SageMakerProjectId
+          - Name: AWS_REGION
+            Value: !Ref "AWS::Region"
+          - Name: ACCOUNT_ID_NON_PROD
+            Value: !Ref AccountIdNonProd
+          - Name: ACCOUNT_ID_PROD
+            Value: !Ref AccountIdProd
+      Tags:
+        - Key: CreatedBy
+          Value: sagemaker
+        - Key: CTC_Bill01_Owner
+          Value: ana
+        - Key: CTC_Bill02_System
+          Value: ani
+        - Key: CTC_Bill03_Type
+          Value: snb
+        - Key: CTC_Bill04_Name
+          Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-postdeploy
+        - Key: AID
+          Value: ana
+        - Key: SID
+          Value: ani
+        - Key: Env
+          Value: snb
+        - Key: Name
+          Value: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-postdeploy   
+      
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: postdeploy/buildspec.yml
+      TimeoutInMinutes: 30
+      
+
+  ModelDeployPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: MlOpsArtifactsBucket
+    Properties:
+      # Max length: 100 chars
+      Name: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-modeldeploy # max: 10+33+15+11=69
+      RoleArn:
+        !Join [ ':', [ 'arn', !Ref 'AWS::Partition', 'iam:', !Ref 'AWS::AccountId', 'role/service-role/AmazonSageMakerServiceCatalogProductsUseRole'] ]
+      ArtifactStore:
+        Type: S3
+        Location:
+          !Ref MlOpsArtifactsBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: ModelDeployInfraCode
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              Configuration:
+                # need to explicitly set this to false per https://docs.aws.amazon.com/codepipeline/latest/userguide/update-change-detection.html
+                PollForSourceChanges: false
+                RepositoryName: !GetAtt ModelDeployCodeCommitRepository.Name
+                BranchName: main
+              OutputArtifacts:
+                - Name: SourceArtifact
+
+        - Name: Build
+          Actions:
+            - Name: BuildDeploymentTemplates
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              InputArtifacts:
+                - Name: SourceArtifact
+              OutputArtifacts:
+                - Name: BuildArtifact
+              Configuration:
+                ProjectName: !Ref ModelDeployBuildProject
+              RunOrder: 1
+
+
+        - Name: DeployDev
+          Actions:
+            - Name: DeployResourcesDev 
+              Namespace: DeployResourcesDev 
+              InputArtifacts:
+                - Name: BuildArtifact
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormationStackSet
+              Configuration:
+                Capabilities: CAPABILITY_NAMED_IAM
+                PermissionModel: SELF_MANAGED
+                OrganizationsAutoDeployment: Disabled
+                StackSetName: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-${SageMakerProjectId}-deploy-dev  #10+33+15+14=72 out of 128 max
+                Parameters: BuildArtifact::dev-config-export.json
+                # The buildspec.yml in the application stack uses this file name,
+                TemplatePath: BuildArtifact::template-export.yml
+                DeploymentTargets: !Ref AccountIdNonProd
+                Regions: !Ref 'AWS::Region'      
+              RunOrder: 1
+              
+            - Name: PostDeployDev
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              InputArtifacts:
+                - Name: SourceArtifact
+                - Name: BuildArtifact
+              OutputArtifacts:
+                - Name: PostDeployArtifactDev
+              Configuration:
+                ProjectName: !Ref PostDeployProject
+                PrimarySource: SourceArtifact
+                EnvironmentVariables: '[{"name":"STACKSET_ID","value":"#{DeployResourcesDev.StackSetId}","type":"PLAINTEXT"},
+                {"name":"BUILD_CONFIG","value":"dev-config-export.json","type":"PLAINTEXT"},
+                {"name":"EXPORT_POSTDEPLOY_RESULTS","value":"dev-postdeploy-results.json","type":"PLAINTEXT"}]'
+              RunOrder: 2
+              
+            
+            - Name: EmailNotifyLambdaDev
+              ActionTypeId:
+                Category: Invoke
+                Owner: AWS
+                Provider: Lambda
+                Version: '1'
+              Configuration:
+                FunctionName: !Ref EmailNotifyLambda
+                UserParameters: '{"pipeline_execution_id":"#{codepipeline.PipelineExecutionId}","build_config_file":"dev-config-export.json"}'
+              OutputArtifacts: []
+              InputArtifacts:
+                - Name: BuildArtifact
+              Region: !Ref 'AWS::Region'
+              RunOrder: 3
+          
+            - Name: ApproveDeploymentDev
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                CustomData: "Approve this model for QA"
+              RunOrder: 4
+
+        - Name: DeployQA
+          Actions:
+            - Name: DeployResourcesQA 
+              Namespace: DeployResourcesQA
+              InputArtifacts:
+                - Name: BuildArtifact
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormationStackSet
+              Configuration:
+                Capabilities: CAPABILITY_NAMED_IAM
+                PermissionModel: SELF_MANAGED
+                OrganizationsAutoDeployment: Disabled
+                StackSetName: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-${SageMakerProjectId}-deploy-qa  #10+33+15+14=72 out of 128 max
+                Parameters: BuildArtifact::qa-config-export.json
+                # The buildspec.yml in the application stack uses this file name,
+                TemplatePath: BuildArtifact::template-export.yml
+                DeploymentTargets: !Ref AccountIdNonProd
+                Regions: !Ref 'AWS::Region'
+              RunOrder: 1
+            
+            - Name: PostDeployQA
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              InputArtifacts:
+                - Name: SourceArtifact
+                - Name: BuildArtifact
+              OutputArtifacts:
+                - Name: PostDeployArtifactQA
+              Configuration:
+                ProjectName: !Ref PostDeployProject
+                PrimarySource: SourceArtifact
+                EnvironmentVariables: '[{"name":"STACKSET_ID","value":"#{DeployResourcesQA.StackSetId}","type":"PLAINTEXT"},
+                {"name":"BUILD_CONFIG","value":"qa-config-export.json","type":"PLAINTEXT"},
+                {"name":"EXPORT_POSTDEPLOY_RESULTS","value":"qa-postdeploy-results.json","type":"PLAINTEXT"}]'
+              RunOrder: 2
+              
+            - Name: EmailNotifyLambdaQa
+              ActionTypeId:
+                Category: Invoke
+                Owner: AWS
+                Provider: Lambda
+                Version: '1'
+              Configuration:
+                FunctionName: !Ref EmailNotifyLambda
+                UserParameters: '{"pipeline_execution_id":"#{codepipeline.PipelineExecutionId}","build_config_file":"qa-config-export.json"}'
+              OutputArtifacts: []
+              InputArtifacts:
+                - Name: BuildArtifact
+              Region: !Ref 'AWS::Region'
+              RunOrder: 3
+              
+            - Name: ApproveDeploymentQA
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                CustomData: "Approve this model for UAT"
+              RunOrder: 4
+
+
+        - Name: DeployUAT
+          Actions:
+            - Name: DeployResourcesUAT
+              Namespace: DeployResourcesUAT
+              InputArtifacts:
+                - Name: BuildArtifact
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormationStackSet
+              Configuration:
+                Capabilities: CAPABILITY_NAMED_IAM
+                PermissionModel: SELF_MANAGED
+                OrganizationsAutoDeployment: Disabled
+                StackSetName: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-${SageMakerProjectId}-deploy-uat  #10+33+15+14=72 out of 128 max
+                Parameters: BuildArtifact::uat-config-export.json
+                # The buildspec.yml in the application stack uses this file name,
+                TemplatePath: BuildArtifact::template-export.yml
+                DeploymentTargets: !Ref AccountIdNonProd
+                Regions: !Ref 'AWS::Region'
+              RunOrder: 1
+            
+            - Name: PostDeployUAT
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              InputArtifacts:
+                - Name: SourceArtifact
+                - Name: BuildArtifact
+              OutputArtifacts:
+                - Name: PostDeployArtifactUAT
+              Configuration:
+                ProjectName: !Ref PostDeployProject
+                PrimarySource: SourceArtifact
+                EnvironmentVariables: '[{"name":"STACKSET_ID","value":"#{DeployResourcesUAT.StackSetId}","type":"PLAINTEXT"},
+                {"name":"BUILD_CONFIG","value":"uat-config-export.json","type":"PLAINTEXT"},
+                {"name":"EXPORT_POSTDEPLOY_RESULTS","value":"uat-postdeploy-results.json","type":"PLAINTEXT"}]'
+              RunOrder: 2
+              
+            - Name: EmailNotifyLambdaUat
+              ActionTypeId:
+                Category: Invoke
+                Owner: AWS
+                Provider: Lambda
+                Version: '1'
+              Configuration:
+                FunctionName: !Ref EmailNotifyLambda
+                UserParameters: '{"pipeline_execution_id":"#{codepipeline.PipelineExecutionId}","build_config_file":"uat-config-export.json"}'
+              OutputArtifacts: []
+              InputArtifacts:
+                - Name: BuildArtifact
+              Region: !Ref 'AWS::Region'
+              RunOrder: 3
+              
+            - Name: ApproveDeploymentUAT
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                CustomData: "Approve this model for Production"
+              RunOrder: 4
+ 
+        - Name: DeployProd
+          Actions:
+            - Name: DeployResourcesProd
+              Namespace: DeployResourcesProd
+              InputArtifacts:
+                - Name: BuildArtifact
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormationStackSet
+              Configuration:               
+                Capabilities: CAPABILITY_NAMED_IAM
+                PermissionModel: SELF_MANAGED
+                OrganizationsAutoDeployment: Disabled
+                StackSetName: !Sub ana-snb-ani-sagemaker-${SageMakerProjectName}-deploy-prod  #10+33+15+14=72 out of 128 max
+                Parameters: BuildArtifact::prod-config-export.json
+                TemplatePath: BuildArtifact::template-export.yml
+                DeploymentTargets: !Ref AccountIdProd
+                Regions: !Ref 'AWS::Region'
+              RunOrder: 1
+            
+            - Name: PostDeployProd
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              InputArtifacts:
+                - Name: SourceArtifact
+                - Name: BuildArtifact
+              OutputArtifacts:
+                - Name: PostDeployArtifactProd
+              Configuration:
+                ProjectName: !Ref PostDeployProject
+                PrimarySource: SourceArtifact
+                EnvironmentVariables: '[{"name":"STACKSET_ID","value":"#{DeployResourcesProd.StackSetId}","type":"PLAINTEXT"},
+                {"name":"BUILD_CONFIG","value":"prod-config-export.json","type":"PLAINTEXT"},
+                {"name":"EXPORT_POSTDEPLOY_RESULTS","value":"prod-postdeploy-results.json","type":"PLAINTEXT"}]'
+              RunOrder: 2
+        
